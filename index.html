@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Synapse | Resonance</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;800;900&display=swap');
+        
+        body {
+            background-color: #000000;
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        .overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 2.5rem;
+            pointer-events: none;
+        }
+
+        .center-stage {
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            transition: transform 0.05s ease-out;
+            will-change: transform;
+        }
+
+        .headline-top {
+            font-size: clamp(4.5rem, 14vw, 12rem);
+            font-weight: 900;
+            line-height: 0.85;
+            letter-spacing: -0.06em;
+            background: linear-gradient(90deg, #ccff00 0%, #00ffff 50%, #b026ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0px 0px 60px rgba(204, 255, 0, 0.6));
+            margin-bottom: -0.05em;
+            text-transform: uppercase;
+        }
+
+        .headline-bottom {
+            font-size: clamp(4.5rem, 14vw, 12rem);
+            font-weight: 900;
+            line-height: 0.85;
+            letter-spacing: -0.06em;
+            background: linear-gradient(90deg, #b026ff 0%, #ff1493 50%, #ff4500 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0px 0px 60px rgba(176, 38, 255, 0.6));
+            text-transform: uppercase;
+        }
+
+        .subtitle {
+            max-width: 700px;
+            margin-top: 2.5rem;
+            font-size: clamp(1.1rem, 2.5vw, 1.4rem);
+            font-weight: 500;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 1);
+            text-align: center;
+            text-shadow: 0px 6px 25px rgba(0,0,0,1), 0px 2px 5px rgba(0,0,0,1);
+        }
+
+        .top-bar, .bottom-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 800;
+            letter-spacing: 0.15em;
+            font-size: 0.85rem;
+            text-shadow: 0px 2px 10px rgba(0,0,0,0.8);
+        }
+
+        .brand-orb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #00ffff, #b026ff);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.9);
+        }
+
+        .play-trigger {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+        }
+
+        .play-trigger:hover {
+            border-color: #00ffff;
+            box-shadow: 0 0 50px rgba(0, 255, 255, 0.9), inset 0 0 25px rgba(0, 255, 255, 0.5);
+            transform: scale(1.15);
+        }
+
+        .play-glyph {
+            width: 0;
+            height: 0;
+            border-top: 9px solid transparent;
+            border-left: 15px solid white;
+            border-bottom: 9px solid transparent;
+            margin-left: 5px;
+            transition: border-left-color 0.2s ease;
+        }
+
+        .play-trigger:hover .play-glyph {
+            border-left-color: #00ffff;
+        }
+
+        .hud-text {
+            font-size: 0.8rem;
+            font-weight: 800;
+            letter-spacing: 0.3em;
+        }
+
+        .hud-left { color: #00ffff; text-shadow: 0 0 15px rgba(0, 255, 255, 0.7); }
+        .hud-right { color: rgba(255, 255, 255, 0.6); }
+
+        @media (max-width: 768px) {
+            .overlay { padding: 1.5rem; }
+            .play-trigger { width: 54px; height: 54px; }
+            .play-glyph { border-top: 7px solid transparent; border-left: 12px solid white; border-bottom: 7px solid transparent; }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="renderView"></canvas>
+    
+    <div class="overlay">
+        <div class="top-bar">
+            <div class="brand">
+                <div class="brand-orb"></div>
+                SYNAPSE
+            </div>
+            <div class="play-trigger" id="audioBtn">
+                <div class="play-glyph"></div>
+            </div>
+        </div>
+        
+        <div class="center-stage" id="stage">
+            <div class="headline-top">FEEL THE</div>
+            <div class="headline-bottom">PULSE.</div>
+            <div class="subtitle">
+                A vibrant journey through color and rhythm. Let the waves of sound wash over you and guide your senses into a pure visceral experience.
+            </div>
+        </div>
+
+        <div class="bottom-bar">
+            <div class="hud-text hud-left">01 &mdash; RESONANCE</div>
+            <div class="hud-text hud-right">VISUALIZER ACTIVE</div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('renderView');
+        const ctx = canvas.getContext('2d', { alpha: false });
+        const textLayer = document.getElementById('stage');
+        const dpr = window['device' + 'Pixel' + 'Ratio'] || 1;
+        
+        let width, height, cx, cy;
+        let elements = [];
+        let audioCtx = null;
+        let isStreaming = false;
+        let shockwaveForce = 0;
+        let tick = 0;
+        let pointer = { x: -2000, y: -2000, active: false };
+        let parallaxTarget = { x: 0, y: 0 };
+        let parallaxCurrent = { x: 0, y: 0 };
+        let oscillators = [];
+
+        // High contrast neon palette + pure white for depth peaks
+        const palette = ['#ccff00', '#00ffff', '#b026ff', '#ff1493', '#ff4500'];
+        const PI2 = Math.PI * 2;
+
+        function adaptScreen() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            ctx.scale(dpr, dpr);
+            cx = width / 2;
+            cy = height / 2;
+        }
+        
+        window.addEventListener('resize', adaptScreen);
+        adaptScreen();
+
+        window.addEventListener('mousemove', e => {
+            pointer.x = e.clientX;
+            pointer.y = e.clientY;
+            pointer.active = true;
+        });
+        
+        window.addEventListener('touchmove', e => {
+            pointer.x = e.touches[0].clientX;
+            pointer.y = e.touches[0].clientY;
+            pointer.active = true;
+        }, { passive: true });
+        
+        window.addEventListener('touchend', () => pointer.active = false);
+        window.addEventListener('mouseleave', () => pointer.active = false);
+
+        function boot() {
+            // Optimized counts for mobile-first smooth 60fps while maintaining extreme density
+            const density = window.innerWidth < 768 ? 3500 : 10000;
+            const goldenAngle = 137.508 * (Math.PI / 180);
+            
+            elements = [];
+            for (let i = 0; i < density; i++) {
+                let r = Math.sqrt(i) * (window.innerWidth < 768 ? 4 : 7);
+                let a = i * goldenAngle;
+                let colorHex = palette[i % palette.length];
+                
+                elements.push({
+                    baseR: r,
+                    r: r,
+                    a: a,
+                    color: colorHex,
+                    size: (Math.random() * 2.5) + 0.8
+                });
+            }
+        }
+
+        function fireCinematicDrop() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            // Retain visual impact
+            shockwaveForce = 6.5; 
+
+            if (oscillators.length === 0) {
+                // High-quality hippy vibe: Lush ambient drone, no hard jumps, sliding harmonics
+                const masterGain = audioCtx.createGain();
+                masterGain.gain.value = 0.4;
+                
+                // Gentle lowpass filter for warmth
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.value = 1000;
+                
+                // Hypnotic space delay (reverb-like)
+                const delay = audioCtx.createDelay(2.0);
+                delay.delayTime.value = 0.75;
+                const feedback = audioCtx.createGain();
+                feedback.gain.value = 0.6;
+                delay.connect(feedback);
+                feedback.connect(delay);
+                
+                filter.connect(masterGain);
+                filter.connect(delay);
+                delay.connect(masterGain);
+                masterGain.connect(audioCtx.destination);
+                
+                // Slow LFO for filter to create a constant breathing effect (not repetitive)
+                const lfo = audioCtx.createOscillator();
+                lfo.type = 'sine';
+                lfo.frequency.value = 0.02; // Very slow, non-repetitive feel
+                const lfoGain = audioCtx.createGain();
+                lfoGain.gain.value = 400;
+                lfo.connect(lfoGain);
+                lfoGain.connect(filter.frequency);
+                lfo.start();
+
+                // Pure harmonic pentatonic scale (C major / A minor flavor)
+                const baseScale = [130.81, 164.81, 196.00, 261.63, 329.63, 392.00];
+                
+                for (let i = 0; i < 5; i++) {
+                    let osc = audioCtx.createOscillator();
+                    // Mix sine and triangle for soft, harmonic, rich tones
+                    osc.type = i % 2 === 0 ? 'sine' : 'triangle';
+                    
+                    let oscGain = audioCtx.createGain();
+                    oscGain.gain.value = 0; 
+                    // Smooth, long fade in
+                    oscGain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 4);
+                    
+                    osc.connect(oscGain);
+                    oscGain.connect(filter);
+                    
+                    let freq = baseScale[i % baseScale.length];
+                    osc.frequency.value = freq;
+                    osc.start();
+                    
+                    oscillators.push({osc: osc, gain: oscGain, targetFreq: freq});
+                }
+            }
+        }
+
+        document.getElementById('audioBtn').addEventListener('click', () => {
+            fireCinematicDrop();
+            if (!isStreaming) {
+                isStreaming = true;
+                setInterval(() => {
+                    if (audioCtx) {
+                        const now = audioCtx.currentTime;
+                        // Extended harmonic series/pentatonic scale for sliding
+                        const scale = [65.41, 98.00, 130.81, 164.81, 196.00, 261.63, 329.63, 392.00, 523.25, 659.25];
+                        
+                        oscillators.forEach((o) => {
+                            let currentIdx = scale.indexOf(o.targetFreq);
+                            if (currentIdx === -1) currentIdx = Math.floor(scale.length / 2);
+                            
+                            // Slide gradually to a neighboring harmonic node (no hard jumps)
+                            let step = Math.random() > 0.5 ? 1 : -1;
+                            let nextIdx = currentIdx + step;
+                            if (nextIdx < 0) nextIdx = 1;
+                            if (nextIdx >= scale.length) nextIdx = scale.length - 2;
+                            
+                            let nextFreq = scale[nextIdx];
+                            o.targetFreq = nextFreq;
+                            
+                            // All slides - smooth harmonic transitions over 3 to 4 seconds
+                            o.osc.frequency.linearRampToValueAtTime(nextFreq, now + 3 + Math.random());
+                        });
+                        
+                        // Gentle visual wave complementing the constant vibe
+                        shockwaveForce = 3 + Math.random() * 2;
+                    }
+                }, 4000); 
+            }
+        });
+
+        function run() {
+            // Smooth parallax tracking
+            if (pointer.active) {
+                parallaxTarget.x = (pointer.x - cx) * 0.015;
+                parallaxTarget.y = (pointer.y - cy) * 0.015;
+            } else {
+                parallaxTarget.x = 0;
+                parallaxTarget.y = 0;
+            }
+            parallaxCurrent.x += (parallaxTarget.x - parallaxCurrent.x) * 0.1;
+            parallaxCurrent.y += (parallaxTarget.y - parallaxCurrent.y) * 0.1;
+
+            // Maximum contrast pure black clear with trail decay (increased alpha to enhance contrast)
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.globalAlpha = 1.0;
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'; 
+            ctx.fillRect(0, 0, width, height);
+            
+            // Additive blending for blown-out neon lighting
+            ctx.globalCompositeOperation = 'lighter';
+            tick += 0.025; 
+            shockwaveForce *= 0.90; 
+            
+            textLayer.style.transform = `scale(${1 + (shockwaveForce * 0.08)})`;
+
+            for (let i = 0; i < elements.length; i++) {
+                let p = elements[i];
+                
+                // Base rotation with perspective depth scaling
+                p.a -= 0.005 + (0.004 * (p.baseR / 200));
+                
+                // Kaleidoscopic shockwave distortion
+                let wave = Math.sin(p.a * 12 - tick * 10) * (80 * shockwaveForce);
+                p.r = p.baseR + wave + (shockwaveForce * 60); 
+                
+                let x = cx + Math.cos(p.a) * p.r;
+                let y = cy + Math.sin(p.a) * p.r;
+                
+                // Perfected 3D perspective mapping - steep curve for extreme depth
+                let distToCenter = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
+                let zScale = 0.05 + Math.pow(distToCenter / (cx || 1), 2.4) * 8.0;
+                
+                // Apply smooth parallax shift, making foreground items move substantially more
+                x -= parallaxCurrent.x * zScale * 2.5; 
+                y -= parallaxCurrent.y * zScale * 2.5;
+
+                let renderColor = p.color;
+                let renderSize = p.size * zScale;
+                
+                // Increased contrast: deep core is darker (0.02), forefront is bolder (0.8 multiplier)
+                let alpha = Math.min(1, Math.max(0.02, zScale * 0.8)); 
+                
+                // High performance distance check without Math.hypot overhead
+                if (pointer.active) {
+                    let dx = x - pointer.x;
+                    let dy = y - pointer.y;
+                    let distSq = dx * dx + dy * dy;
+                    
+                    if (distSq < 62500) { // 250px radius squared
+                        let dist = Math.sqrt(distSq);
+                        let push = (250 - dist) / 250;
+                        x += (dx / dist) * push * 180;
+                        y += (dy / dist) * push * 180;
+                        renderColor = '#ffffff'; // Flash pure white on disruption
+                        renderSize *= 2.5; 
+                        alpha = 1.0;
+                    }
+                }
+                
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = renderColor;
+                ctx.beginPath();
+                ctx.arc(x, y, renderSize, 0, PI2);
+                ctx.fill();
+            }
+            
+            requestAnimationFrame(run);
+        }
+
+        boot();
+        run();
+    </script>
+</body>
+</html>
