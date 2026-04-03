@@ -304,7 +304,7 @@
                 lfoGain.connect(filter.frequency);
                 lfo.start();
 
-                const baseScale = [130.81, 164.81, 196.00, 261.63, 329.63, 392.00];
+                const baseScale = [128.00, 160.00, 192.00, 256.00, 320.00, 384.00];
                 
                 for (let i = 0; i < 5; i++) {
                     let osc = audioCtx.createOscillator();
@@ -335,10 +335,10 @@
                         const now = audioCtx.currentTime;
                         // Elite harmonic progressions: Strict beautiful chords guarantee it stays perfectly in tune
                         const chords = [
-                            [130.81, 164.81, 196.00, 261.63, 329.63], // C Maj 9
-                            [174.61, 220.00, 261.63, 329.63, 392.00], // F Maj 9
-                            [146.83, 174.61, 220.00, 261.63, 349.23], // D Min 11
-                            [164.81, 196.00, 246.94, 293.66, 392.00]  // E Min 7
+                            [128.00, 160.00, 192.00, 256.00, 320.00], // C Maj 9
+                            [170.66, 213.33, 256.00, 320.00, 384.00], // F Maj 9
+                            [144.00, 172.80, 216.00, 259.20, 345.60], // D Min 11
+                            [160.00, 192.00, 240.00, 288.00, 384.00]  // E Min 7
                         ];
                         
                         window.chordIdx = (window.chordIdx !== undefined ? window.chordIdx + 1 : 1) % chords.length;
