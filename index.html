@@ -57,10 +57,10 @@
             font-weight: 900;
             line-height: 0.85;
             letter-spacing: -0.06em;
-            background: linear-gradient(90deg, #ccff00 0%, #00ffff 50%, #b026ff 100%);
+            background: linear-gradient(90deg, #ff9955 0%, #bb44ff 50%, #ffffaa 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            filter: drop-shadow(0px 0px 60px rgba(204, 255, 0, 0.6));
+            filter: drop-shadow(0px 0px 60px rgba(255, 153, 85, 0.6));
             margin-bottom: -0.05em;
             text-transform: uppercase;
         }
@@ -70,10 +70,10 @@
             font-weight: 900;
             line-height: 0.85;
             letter-spacing: -0.06em;
-            background: linear-gradient(90deg, #b026ff 0%, #ff1493 50%, #ff4500 100%);
+            background: linear-gradient(90deg, #00aaff 0%, #00dd66 50%, #00eeff 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            filter: drop-shadow(0px 0px 60px rgba(176, 38, 255, 0.6));
+            filter: drop-shadow(0px 0px 60px rgba(0, 170, 255, 0.6));
             text-transform: uppercase;
         }
 
@@ -109,8 +109,8 @@
             width: 20px;
             height: 20px;
             border-radius: 50%;
-            background: linear-gradient(135deg, #00ffff, #b026ff);
-            box-shadow: 0 0 20px rgba(0, 255, 255, 0.9);
+            background: linear-gradient(135deg, #ff9955, #bb44ff);
+            box-shadow: 0 0 20px rgba(187, 68, 255, 0.9);
         }
 
         .play-trigger {
@@ -131,8 +131,8 @@
         }
 
         .play-trigger:hover {
-            border-color: #00ffff;
-            box-shadow: 0 0 50px rgba(0, 255, 255, 0.9), inset 0 0 25px rgba(0, 255, 255, 0.5);
+            border-color: #00aaff;
+            box-shadow: 0 0 50px rgba(0, 170, 255, 0.9), inset 0 0 25px rgba(0, 170, 255, 0.5);
             transform: scale(1.15);
         }
 
@@ -147,7 +147,7 @@
         }
 
         .play-trigger:hover .play-glyph {
-            border-left-color: #00ffff;
+            border-left-color: #00aaff;
         }
 
         .hud-text {
@@ -156,7 +156,7 @@
             letter-spacing: 0.3em;
         }
 
-        .hud-left { color: #00ffff; text-shadow: 0 0 15px rgba(0, 255, 255, 0.7); }
+        .hud-left { color: #00aaff; text-shadow: 0 0 15px rgba(0, 170, 255, 0.7); }
         .hud-right { color: rgba(255, 255, 255, 0.6); }
 
         @media (max-width: 768px) {
@@ -211,8 +211,8 @@
         let parallaxCurrent = { x: 0, y: 0 };
         let oscillators = [];
 
-        // High contrast neon palette + pure white for depth peaks
-        const palette = ['#ccff00', '#00ffff', '#b026ff', '#ff1493', '#ff4500'];
+        // Hyper-vibrant blended palette: Creame orange, violet glows, pale yellow, bright blues integrating into greens and beyond
+        const palette = ['#ff9955', '#bb44ff', '#ffffaa', '#00ffaa', '#00aaff', '#00dd66', '#00eeff'];
         const PI2 = Math.PI * 2;
 
         function adaptScreen() {
@@ -244,13 +244,13 @@
         window.addEventListener('mouseleave', () => pointer.active = false);
 
         function boot() {
-            // Optimized counts for mobile-first smooth 60fps while maintaining extreme density
-            const density = window.innerWidth < 768 ? 3500 : 10000;
+            // Increased density and finer base scale for an intricate, "elite" level of detail
+            const density = window.innerWidth < 768 ? 4500 : 12000;
             const goldenAngle = 137.508 * (Math.PI / 180);
             
             elements = [];
             for (let i = 0; i < density; i++) {
-                let r = Math.sqrt(i) * (window.innerWidth < 768 ? 4 : 7);
+                let r = Math.sqrt(i) * (window.innerWidth < 768 ? 3.5 : 5.5);
                 let a = i * goldenAngle;
                 let colorHex = palette[i % palette.length];
                 
@@ -259,7 +259,8 @@
                     r: r,
                     a: a,
                     color: colorHex,
-                    size: (Math.random() * 2.5) + 0.8
+                    // Smaller initial particle size allows for elegant structural webbing
+                    size: (Math.random() * 1.5) + 0.5 
                 });
             }
         }
@@ -275,16 +276,13 @@
             shockwaveForce = 6.5; 
 
             if (oscillators.length === 0) {
-                // High-quality hippy vibe: Lush ambient drone, no hard jumps, sliding harmonics
                 const masterGain = audioCtx.createGain();
                 masterGain.gain.value = 0.4;
                 
-                // Gentle lowpass filter for warmth
                 const filter = audioCtx.createBiquadFilter();
                 filter.type = 'lowpass';
                 filter.frequency.value = 1000;
                 
-                // Hypnotic space delay (reverb-like)
                 const delay = audioCtx.createDelay(2.0);
                 delay.delayTime.value = 0.75;
                 const feedback = audioCtx.createGain();
@@ -297,27 +295,23 @@
                 delay.connect(masterGain);
                 masterGain.connect(audioCtx.destination);
                 
-                // Slow LFO for filter to create a constant breathing effect (not repetitive)
                 const lfo = audioCtx.createOscillator();
                 lfo.type = 'sine';
-                lfo.frequency.value = 0.02; // Very slow, non-repetitive feel
+                lfo.frequency.value = 0.02; 
                 const lfoGain = audioCtx.createGain();
                 lfoGain.gain.value = 400;
                 lfo.connect(lfoGain);
                 lfoGain.connect(filter.frequency);
                 lfo.start();
 
-                // Pure harmonic pentatonic scale (C major / A minor flavor)
                 const baseScale = [130.81, 164.81, 196.00, 261.63, 329.63, 392.00];
                 
                 for (let i = 0; i < 5; i++) {
                     let osc = audioCtx.createOscillator();
-                    // Mix sine and triangle for soft, harmonic, rich tones
                     osc.type = i % 2 === 0 ? 'sine' : 'triangle';
                     
                     let oscGain = audioCtx.createGain();
                     oscGain.gain.value = 0; 
-                    // Smooth, long fade in
                     oscGain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 4);
                     
                     osc.connect(oscGain);
@@ -333,41 +327,48 @@
         }
 
         document.getElementById('audioBtn').addEventListener('click', () => {
-            fireCinematicDrop();
-            if (!isStreaming) {
+            if (!audioCtx) {
+                fireCinematicDrop();
                 isStreaming = true;
                 setInterval(() => {
-                    if (audioCtx) {
+                    if (audioCtx && isStreaming) {
                         const now = audioCtx.currentTime;
-                        // Extended harmonic series/pentatonic scale for sliding
-                        const scale = [65.41, 98.00, 130.81, 164.81, 196.00, 261.63, 329.63, 392.00, 523.25, 659.25];
+                        // Elite harmonic progressions: Strict beautiful chords guarantee it stays perfectly in tune
+                        const chords = [
+                            [130.81, 164.81, 196.00, 261.63, 329.63], // C Maj 9
+                            [174.61, 220.00, 261.63, 329.63, 392.00], // F Maj 9
+                            [146.83, 174.61, 220.00, 261.63, 349.23], // D Min 11
+                            [164.81, 196.00, 246.94, 293.66, 392.00]  // E Min 7
+                        ];
                         
-                        oscillators.forEach((o) => {
-                            let currentIdx = scale.indexOf(o.targetFreq);
-                            if (currentIdx === -1) currentIdx = Math.floor(scale.length / 2);
-                            
-                            // Slide gradually to a neighboring harmonic node (no hard jumps)
-                            let step = Math.random() > 0.5 ? 1 : -1;
-                            let nextIdx = currentIdx + step;
-                            if (nextIdx < 0) nextIdx = 1;
-                            if (nextIdx >= scale.length) nextIdx = scale.length - 2;
-                            
-                            let nextFreq = scale[nextIdx];
+                        window.chordIdx = (window.chordIdx !== undefined ? window.chordIdx + 1 : 1) % chords.length;
+                        let nextChord = chords[window.chordIdx];
+                        
+                        oscillators.forEach((o, i) => {
+                            let nextFreq = nextChord[i % nextChord.length];
                             o.targetFreq = nextFreq;
                             
-                            // All slides - smooth harmonic transitions over 3 to 4 seconds
-                            o.osc.frequency.linearRampToValueAtTime(nextFreq, now + 3 + Math.random());
+                            // Exponential ramp ensures perfect pitch perception, and strict uniform timing 
+                            // prevents out-of-tune microtones during the transition.
+                            o.osc.frequency.exponentialRampToValueAtTime(nextFreq, now + 3.0);
                         });
                         
-                        // Gentle visual wave complementing the constant vibe
                         shockwaveForce = 3 + Math.random() * 2;
                     }
                 }, 4000); 
+            } else {
+                if (isStreaming) {
+                    audioCtx.suspend();
+                    isStreaming = false;
+                } else {
+                    audioCtx.resume();
+                    isStreaming = true;
+                    shockwaveForce = 6.5;
+                }
             }
         });
 
         function run() {
-            // Smooth parallax tracking
             if (pointer.active) {
                 parallaxTarget.x = (pointer.x - cx) * 0.015;
                 parallaxTarget.y = (pointer.y - cy) * 0.015;
@@ -378,60 +379,68 @@
             parallaxCurrent.x += (parallaxTarget.x - parallaxCurrent.x) * 0.1;
             parallaxCurrent.y += (parallaxTarget.y - parallaxCurrent.y) * 0.1;
 
-            // Maximum contrast pure black clear with trail decay (increased alpha to enhance contrast)
+            // Clear frame with gentle trail mapping
             ctx.globalCompositeOperation = 'source-over';
             ctx.globalAlpha = 1.0;
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.45)'; 
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'; 
             ctx.fillRect(0, 0, width, height);
             
-            // Additive blending for blown-out neon lighting
-            ctx.globalCompositeOperation = 'lighter';
+            // Screen blending maximizes vibrant color overlap without blowing out to pure white as fast as lighter
+            ctx.globalCompositeOperation = 'screen';
             tick += 0.025; 
             shockwaveForce *= 0.90; 
             
             textLayer.style.transform = `scale(${1 + (shockwaveForce * 0.08)})`;
 
+            let depthRef = Math.max(width, 800) / 2;
+
             for (let i = 0; i < elements.length; i++) {
                 let p = elements[i];
                 
-                // Base rotation with perspective depth scaling
                 p.a -= 0.005 + (0.004 * (p.baseR / 200));
                 
-                // Kaleidoscopic shockwave distortion
-                let wave = Math.sin(p.a * 12 - tick * 10) * (80 * shockwaveForce);
-                p.r = p.baseR + wave + (shockwaveForce * 60); 
+                // Elite artifact detailing: Complex multi-harmonic orbital interference
+                let wave1 = Math.sin(p.a * 15 - tick * 12) * (50 * shockwaveForce);
+                let wave2 = Math.cos(p.a * 7 + tick * 8) * (25 * shockwaveForce);
+                let wave3 = Math.sin(p.r * 0.08 - tick * 15) * (15 * shockwaveForce);
+                
+                p.r = p.baseR + wave1 + wave2 + wave3 + (shockwaveForce * 40); 
                 
                 let x = cx + Math.cos(p.a) * p.r;
                 let y = cy + Math.sin(p.a) * p.r;
                 
-                // Perfected 3D perspective mapping - steep curve for extreme depth
                 let distToCenter = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
-                let zScale = 0.05 + Math.pow(distToCenter / (cx || 1), 2.4) * 8.0;
                 
-                // Apply smooth parallax shift, making foreground items move substantially more
+                // Keep the smooth, deep 3D curve
+                let zScale = 0.05 + Math.pow(distToCenter / depthRef, 2.2) * 5.5;
+                
                 x -= parallaxCurrent.x * zScale * 2.5; 
                 y -= parallaxCurrent.y * zScale * 2.5;
 
                 let renderColor = p.color;
-                let renderSize = p.size * zScale;
                 
-                // Increased contrast: deep core is darker (0.02), forefront is bolder (0.8 multiplier)
-                let alpha = Math.min(1, Math.max(0.02, zScale * 0.8)); 
+                // Hard cap size & alpha so edges blend gracefully.
+                // INCREASED minimum size and alpha to eliminate the dark center shadow,
+                // revealing the colorful twirling depth at the absolute core.
+                let maxParticleSize = window.innerWidth < 768 ? 8 : 14;
+                let renderSize = Math.max(1.5, Math.min(p.size * (zScale + 1.2), maxParticleSize));
                 
-                // High performance distance check without Math.hypot overhead
+                // Solid minimum alpha guarantees the center is vivid and present
+                let alpha = Math.min(0.9, Math.max(0.25, zScale * 0.25)); 
+                
                 if (pointer.active) {
                     let dx = x - pointer.x;
                     let dy = y - pointer.y;
                     let distSq = dx * dx + dy * dy;
                     
-                    if (distSq < 62500) { // 250px radius squared
+                    if (distSq < 62500) { 
                         let dist = Math.sqrt(distSq);
                         let push = (250 - dist) / 250;
                         x += (dx / dist) * push * 180;
                         y += (dy / dist) * push * 180;
-                        renderColor = '#ffffff'; // Flash pure white on disruption
-                        renderSize *= 2.5; 
-                        alpha = 1.0;
+                        // Instead of turning white, amplify the particle's natural brilliant color
+                        renderSize = Math.min(renderSize * 2.5, 20); 
+                        alpha = Math.min(1.0, alpha * 2.5);
                     }
                 }
                 
