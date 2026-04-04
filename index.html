@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>BNDR | Zen</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -17,7 +17,11 @@
             overflow: hidden;
             user-select: none;
             -webkit-user-select: none;
-            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-tap-highlight-color: transparent;
+            /* manipulation: allows tap+doubletap, blocks scroll/pinch on body.
+               Canvas keeps touch-action:none independently below. */
+            touch-action: manipulation;
         }
 
         canvas {
@@ -28,6 +32,8 @@
             width: 100vw;
             height: 100vh;
             z-index: 1;
+            /* Canvas owns the raw touch field — no native gestures here */
+            touch-action: none;
         }
 
         .overlay {
@@ -37,6 +43,7 @@
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            /* Desktop padding */
             padding: 2.5rem;
             pointer-events: none;
         }
@@ -128,12 +135,27 @@
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
             box-shadow: 0 0 30px rgba(0,0,0,0.8);
+            -webkit-tap-highlight-color: transparent;
+            /* manipulation kills 300ms iOS tap delay on this element */
+            touch-action: manipulation;
         }
 
-        .play-trigger:hover {
+        @media (hover: hover) {
+            .play-trigger:hover {
+                border-color: #00aaff;
+                box-shadow: 0 0 50px rgba(0, 170, 255, 0.9), inset 0 0 25px rgba(0, 170, 255, 0.5);
+                transform: scale(1.15);
+            }
+            .play-trigger:hover .play-glyph {
+                border-left-color: #00aaff;
+            }
+        }
+
+        /* :active fires on both touch and mouse — immediate tactile feedback on mobile */
+        .play-trigger:active {
+            transform: scale(0.92);
             border-color: #00aaff;
-            box-shadow: 0 0 50px rgba(0, 170, 255, 0.9), inset 0 0 25px rgba(0, 170, 255, 0.5);
-            transform: scale(1.15);
+            box-shadow: 0 0 30px rgba(0, 170, 255, 0.7), inset 0 0 15px rgba(0, 170, 255, 0.4);
         }
 
         .play-glyph {
@@ -146,10 +168,6 @@
             transition: border-left-color 0.2s ease;
         }
 
-        .play-trigger:hover .play-glyph {
-            border-left-color: #00aaff;
-        }
-
         .hud-text {
             font-size: 0.8rem;
             font-weight: 800;
@@ -159,10 +177,71 @@
         .hud-left { color: #00aaff; text-shadow: 0 0 15px rgba(0, 170, 255, 0.7); }
         .hud-right { color: rgba(255, 255, 255, 0.6); }
 
+        /* ── Mobile: 768px and below ───────────────────────────────────
+           Safe-area insets written as four explicit properties
+           (shorthand max() inside padding: fails on some Android WebViews).
+           Ensures notch/Dynamic Island/home-bar clearance on every device. */
         @media (max-width: 768px) {
-            .overlay { padding: 1.5rem; }
-            .play-trigger { width: 54px; height: 54px; }
-            .play-glyph { border-top: 7px solid transparent; border-left: 12px solid white; border-bottom: 7px solid transparent; }
+            .overlay {
+                padding-top:    max(1.5rem, env(safe-area-inset-top));
+                padding-right:  max(1.5rem, env(safe-area-inset-right));
+                padding-bottom: max(2rem,   env(safe-area-inset-bottom));
+                padding-left:   max(1.5rem, env(safe-area-inset-left));
+            }
+
+            /* Headlines: allow smaller floor on narrow viewports */
+            .headline-top, .headline-bottom {
+                font-size: clamp(2.8rem, 13vw, 4.5rem);
+            }
+
+            /* Subtitle: 2.5vw at 375px = ~9px — unreadable. Floor at 0.95rem. */
+            .subtitle {
+                margin-top: 1.2rem;
+                font-size: clamp(0.95rem, 3.8vw, 1.15rem);
+                line-height: 1.55;
+                padding: 0 0.5rem;
+            }
+
+            /* Bottom bar: stack vertically, centred */
+            .bottom-bar {
+                flex-direction: column;
+                gap: 0.5rem;
+                align-items: center;
+            }
+
+            .hud-text {
+                font-size: 0.7rem;
+                letter-spacing: 0.2em;
+                text-align: center;
+            }
+
+            /* Play button: 60px — comfortably above Apple 44pt / Google 48dp minimum.
+               Gives thumb-zone accuracy without visual bloat. */
+            .play-trigger {
+                width: 60px;
+                height: 60px;
+                /* Expand tap target beyond visible bounds — zero layout impact */
+                padding: 8px;
+                box-sizing: content-box;
+            }
+
+            .play-glyph {
+                border-top: 8px solid transparent;
+                border-left: 13px solid white;
+                border-bottom: 8px solid transparent;
+                margin-left: 4px;
+            }
+        }
+
+        /* ── Smallest iPhones: SE 2/3, 12 mini (375px wide) ──────────── */
+        @media (max-width: 390px) {
+            .headline-top, .headline-bottom {
+                font-size: clamp(2.5rem, 12.5vw, 3.2rem);
+            }
+            .subtitle {
+                font-size: 0.9rem;
+                margin-top: 1rem;
+            }
         }
     </style>
 </head>
@@ -173,7 +252,7 @@
         <div class="top-bar">
             <div class="brand">
                 <div class="brand-orb"></div>
-                BNDR
+                BNDR LLC
             </div>
             <div class="play-trigger" id="audioBtn">
                 <div class="play-glyph"></div>
@@ -181,15 +260,15 @@
         </div>
         
         <div class="center-stage" id="stage">
-            <div class="headline-top">LOVE BELONGS</div>
-            <div class="headline-bottom">HERE.</div>
+            <div class="headline-top">You Deserve</div>
+            <div class="headline-bottom">Love.</div>
             <div class="subtitle">
-                See yourself in every color and rhythm - we all deserve to just 'be', without explaining ourselves. On a computer? Scroll your mouse to change the pitch. Click the "play" button in the top right corner to toggle the sound on/off. ↗
+                A vibrant journey through color and rhythm. Let the waves of sound wash over you and guide your senses into a pure visceral experience.
             </div>
         </div>
 
         <div class="bottom-bar">
-            <div class="hud-text hud-left">01 &mdash; Zen</div>
+            <div class="hud-text hud-left">01 &mdash; Zenscapes</div>
             <div class="hud-text hud-right">Moving Forward</div>
         </div>
     </div>
@@ -211,72 +290,45 @@
         let parallaxCurrent = { x: 0, y: 0 };
 
         // Scroll-controlled semitone transpose
-        let scrollSemitones = 0;          // current applied semitones (lerped)
-        let scrollSemitonesTarget = 0;    // target semitones from user scroll
-        let userScrolling = false;        // true while user is scrolling (suppresses auto-climb)
-        let scrollResumeTimer = null;     // debounce handle — releases user control after idle
-        const SCROLL_RESUME_DELAY = 2500; // ms of scroll silence before auto-climb resumes
+        let scrollSemitones = 0;
+        let scrollSemitonesTarget = 0;
+        let userScrolling = false;
+        let scrollResumeTimer = null;
+        const SCROLL_RESUME_DELAY = 2500;
 
-        // Hyper-vibrant blended palette
         const palette = ['#ff9955', '#bb44ff', '#ffffaa', '#00ffaa', '#00aaff', '#00dd66', '#00eeff'];
         const PI2 = Math.PI * 2;
 
         // ─── AUDIO STATE ───────────────────────────────────────────────
         let masterGain, reverbNode, filterNode, delayNode, feedbackGain, delayWet;
-        let padOscillators = [];   // sustained pad voices (always on, gain-enveloped)
-        let subOsc = null;         // sub-bass pulse oscillator (always on)
+        let padOscillators = [];
+        let subOsc = null;
         let subGain = null;
         let chordIdx = 0;
         let sequencerStep = 0;
         let sequencerInterval = null;
         let rhythmInterval = null;
 
-        /*
-         * BASE CHORD POOL — voiced in root position, bottom-up
-         * All values are base frequencies at scrollSemitones = 0.
-         * Scroll transpose is applied multiplicatively: freq * 2^(semitones/12)
-         *
-         * Progression: Am7 → Fmaj7 → Cmaj9 → G7sus4
-         * — Minor-rooted for darkness and affect (not major-bright drone)
-         * — Extended voicings: 7ths and 9ths for cinematic depth
-         * — Bass note separated to sub oscillator for punch
-         */
         const BASE_CHORDS = [
-            // Am7:   A2  E3  A3  C4  G4
             [110.00, 164.81, 220.00, 261.63, 392.00],
-            // Fmaj7: F2  C3  F3  A3  E4
             [87.31,  130.81, 174.61, 220.00, 329.63],
-            // Cmaj9: C3  G3  C4  E4  D4
             [130.81, 196.00, 261.63, 329.63, 293.66],
-            // G7sus4:G2  D3  G3  C4  F4
             [98.00,  146.83, 196.00, 261.63, 349.23]
         ];
 
-        // Sub-bass root per chord (one octave below chord root)
         const BASE_SUB = [55.00, 43.65, 65.41, 49.00];
 
-        /*
-         * RHYTHM SEQUENCER — 16 steps at 120 BPM (500ms per beat, 125ms per 16th)
-         * Each row = one voice layer
-         *   subPattern:  kick-like sub pulse
-         *   padPattern:  pad stab accent (gain envelope triggered)
-         *   pluckPattern: bright attack pluck hits
-         *
-         * Patterns use syncopation for groove — not straight 4-on-the-floor
-         */
         const BPM = 118;
-        const STEP_MS = (60 / BPM / 4) * 1000; // 16th note in ms
+        const STEP_MS = (60 / BPM / 4) * 1000;
 
         const subPattern   = [1,0,0,0, 0,0,1,0, 1,0,0,1, 0,1,0,0];
         const padPattern   = [1,0,0,1, 0,1,0,0, 1,0,0,0, 0,0,1,0];
         const pluckPattern = [0,0,1,0, 1,0,0,1, 0,1,0,0, 1,0,0,1];
 
-        // ─── HELPER: semitone transpose multiplier ─────────────────────
         function semRatio(semitones) {
             return Math.pow(2, semitones / 12);
         }
 
-        // ─── SYNTHETIC IMPULSE REVERB ──────────────────────────────────
         function buildReverb(ctx, duration, decay) {
             const rate = ctx.sampleRate;
             const len = rate * duration;
@@ -292,28 +344,25 @@
             return conv;
         }
 
-        // ─── FIRE A SUB PULSE (envelope on subGain) ────────────────────
         function triggerSub(time) {
             if (!subGain) return;
             const g = subGain.gain;
             g.cancelScheduledValues(time);
             g.setValueAtTime(0.0001, time);
-            g.exponentialRampToValueAtTime(0.55, time + 0.015); // sharp attack
-            g.exponentialRampToValueAtTime(0.001, time + 0.28); // decay to silence
+            g.exponentialRampToValueAtTime(0.55, time + 0.015);
+            g.exponentialRampToValueAtTime(0.001, time + 0.28);
         }
 
-        // ─── FIRE A PLUCK (short sine burst via new oscillator) ────────
         function triggerPluck(time) {
             if (!audioCtx || !filterNode) return;
             const ratio = semRatio(scrollSemitones);
             const chord = BASE_CHORDS[chordIdx];
-            // Pick a colour tone from the chord (index 2 or 4 — mid-high voice)
-            const rootFreq = chord[2] * ratio * 2; // two octaves up for brightness
+            const rootFreq = chord[2] * ratio * 2;
 
             const osc = audioCtx.createOscillator();
             osc.type = 'triangle';
             osc.frequency.setValueAtTime(rootFreq, time);
-            osc.frequency.exponentialRampToValueAtTime(rootFreq * 0.5, time + 0.18); // pitch drop = pluck feel
+            osc.frequency.exponentialRampToValueAtTime(rootFreq * 0.5, time + 0.18);
 
             const g = audioCtx.createGain();
             g.gain.setValueAtTime(0.0001, time);
@@ -326,7 +375,6 @@
             osc.stop(time + 0.2);
         }
 
-        // ─── TRIGGER PAD ACCENT (swell on existing pads) ───────────────
         function triggerPadAccent(time) {
             if (!padOscillators.length) return;
             padOscillators.forEach((v, i) => {
@@ -334,16 +382,15 @@
                 g.cancelScheduledValues(time);
                 const base = 0.08 + i * 0.01;
                 g.setValueAtTime(base, time);
-                g.linearRampToValueAtTime(base * 2.8, time + 0.06);  // attack swell
-                g.exponentialRampToValueAtTime(base, time + 0.55);    // fall back
+                g.linearRampToValueAtTime(base * 2.8, time + 0.06);
+                g.exponentialRampToValueAtTime(base, time + 0.55);
             });
         }
 
-        // ─── ADVANCE CHORD ─────────────────────────────────────────────
         function advanceChord() {
             if (!audioCtx || !isStreaming) return;
             chordIdx = (chordIdx + 1) % BASE_CHORDS.length;
-            applyChord(audioCtx.currentTime, 1.8); // smooth glide over 1.8s
+            applyChord(audioCtx.currentTime, 1.8);
             shockwaveForce = 4 + Math.random() * 2.5;
         }
 
@@ -365,48 +412,106 @@
             }
         }
 
-        // ─── APPLY SCROLL TRANSPOSE LIVE ──────────────────────────────
         function applyScrollTranspose() {
             if (!audioCtx || !isStreaming) return;
             const now = audioCtx.currentTime;
-            applyChord(now, 0.35); // snappy but smooth 350ms re-tune
+            applyChord(now, 0.35);
         }
 
-
-
-        // ─── SCROLL HANDLER ────────────────────────────────────────────
-        // Each wheel notch = 1 semitone. User takes control immediately.
-        // Auto-climb pauses. After SCROLL_RESUME_DELAY ms of silence,
-        // auto-climb resumes from current position — no reset.
+        // ─── DESKTOP: wheel scroll → semitone control ──────────────────
         window.addEventListener('wheel', (e) => {
             e.preventDefault();
             if (!isStreaming) return;
 
-            // Hand control to user — sequencer sees userScrolling=true and skips chord advance
             userScrolling = true;
 
-            // Reset any pending resume debounce
             if (scrollResumeTimer !== null) {
                 clearTimeout(scrollResumeTimer);
                 scrollResumeTimer = null;
             }
 
-            // Accumulate semitones — ±12 for expressive range
             const delta = e.deltaY > 0 ? 1 : -1;
             scrollSemitonesTarget = Math.max(-12, Math.min(12, scrollSemitonesTarget + delta));
             scrollSemitones = scrollSemitonesTarget;
             applyScrollTranspose();
 
-            // After SCROLL_RESUME_DELAY ms of no scrolling, release control back to sequencer.
-            // The sequencer's bar-clock picks up naturally at the next bar boundary —
-            // the inner 1200ms pause gives exactly one musical beat of silence before resuming.
             scrollResumeTimer = setTimeout(() => {
                 scrollResumeTimer = null;
                 setTimeout(() => {
-                    userScrolling = false; // sequencer resumes at next bar naturally
+                    userScrolling = false;
                 }, 1200);
             }, SCROLL_RESUME_DELAY);
         }, { passive: false });
+
+        // ─── MOBILE: two-finger vertical swipe → semitone control ─────
+        // Single-finger touch remains pointer/parallax field (unchanged).
+        // Two-finger vertical drag maps to the same ±12 semitone range
+        // as desktop scroll — same debounce, same resume logic.
+        let twoFingerStartY = null;
+        let twoFingerLastY  = null;
+        const SWIPE_SEMITONE_PX = 18; // px of two-finger drag per semitone step
+
+        canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                // Two-finger gesture starts — capture mid-point Y
+                twoFingerStartY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+                twoFingerLastY  = twoFingerStartY;
+                // Don't update pointer — two-finger is pitch-only
+            } else if (e.touches.length === 1) {
+                pointer.x = e.touches[0].clientX;
+                pointer.y = e.touches[0].clientY;
+                pointer.active = true;
+            }
+        }, { passive: true });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2) {
+                if (twoFingerLastY === null) return;
+                const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+                const delta = twoFingerLastY - midY; // drag up = positive = higher pitch
+
+                if (Math.abs(delta) >= SWIPE_SEMITONE_PX && isStreaming) {
+                    const steps = Math.sign(delta) * Math.floor(Math.abs(delta) / SWIPE_SEMITONE_PX);
+                    twoFingerLastY = midY;
+
+                    userScrolling = true;
+                    if (scrollResumeTimer !== null) {
+                        clearTimeout(scrollResumeTimer);
+                        scrollResumeTimer = null;
+                    }
+
+                    scrollSemitonesTarget = Math.max(-12, Math.min(12, scrollSemitonesTarget + steps));
+                    scrollSemitones = scrollSemitonesTarget;
+                    applyScrollTranspose();
+
+                    scrollResumeTimer = setTimeout(() => {
+                        scrollResumeTimer = null;
+                        setTimeout(() => { userScrolling = false; }, 1200);
+                    }, SCROLL_RESUME_DELAY);
+                }
+            } else if (e.touches.length === 1) {
+                pointer.x = e.touches[0].clientX;
+                pointer.y = e.touches[0].clientY;
+                pointer.active = true;
+            }
+        }, { passive: true });
+
+        canvas.addEventListener('touchend', (e) => {
+            if (e.touches.length < 2) {
+                twoFingerStartY = null;
+                twoFingerLastY  = null;
+            }
+            if (e.touches.length === 0) {
+                pointer.active = false;
+            }
+        }, { passive: true });
+
+        // touchcancel: clean up stuck pointer state (interrupted by call, notification, etc.)
+        canvas.addEventListener('touchcancel', () => {
+            pointer.active    = false;
+            twoFingerStartY   = null;
+            twoFingerLastY    = null;
+        }, { passive: true });
 
         // ─── BOOT AUDIO ENGINE ─────────────────────────────────────────
         function fireCinematicDrop() {
@@ -418,23 +523,20 @@
 
             shockwaveForce = 6.5;
 
-            if (padOscillators.length > 0) return; // already running
+            if (padOscillators.length > 0) return;
 
             const now = audioCtx.currentTime;
 
-            // ── Master chain ──────────────────────────────────────────
             masterGain = audioCtx.createGain();
             masterGain.gain.setValueAtTime(0.38, now);
             masterGain.connect(audioCtx.destination);
 
-            // Reverb — 2.8s, decay=3 — generous spatial wash
             reverbNode = buildReverb(audioCtx, 2.8, 3);
             const reverbWet = audioCtx.createGain();
             reverbWet.gain.setValueAtTime(0.28, now);
             reverbNode.connect(reverbWet);
             reverbWet.connect(masterGain);
 
-            // Filter — lowpass 3400 Hz, subtle Q for warmth without mud
             filterNode = audioCtx.createBiquadFilter();
             filterNode.type = 'lowpass';
             filterNode.frequency.setValueAtTime(3400, now);
@@ -442,7 +544,6 @@
             filterNode.connect(masterGain);
             filterNode.connect(reverbNode);
 
-            // Delay — 3/8 note at 118 BPM = ~305ms for rhythmic echo
             delayNode = audioCtx.createDelay(2.0);
             delayNode.delayTime.setValueAtTime(0.305, now);
             feedbackGain = audioCtx.createGain();
@@ -455,12 +556,10 @@
             delayWet.connect(delayNode);
             delayNode.connect(masterGain);
 
-            // ── Sub-bass oscillator (always on, gain-triggered) ───────
             subOsc = audioCtx.createOscillator();
             subOsc.type = 'sine';
             subOsc.frequency.setValueAtTime(BASE_SUB[chordIdx], now);
 
-            // Low-shelf to cut sub below 40Hz, keep punch around 55-80Hz
             const subFilter = audioCtx.createBiquadFilter();
             subFilter.type = 'lowshelf';
             subFilter.frequency.setValueAtTime(80, now);
@@ -471,21 +570,9 @@
 
             subOsc.connect(subFilter);
             subFilter.connect(subGain);
-            subGain.connect(masterGain); // sub bypasses reverb/delay — stays tight
+            subGain.connect(masterGain);
             subOsc.start(now);
 
-            // ── Pad voices (sustained, always on) ────────────────────
-            /*
-             * 5 voice pad architecture:
-             *   0 → sine      : warm bass octave root
-             *   1 → triangle  : mid-harmonic 5th (odd harmonics only at 1/n²)
-             *   2 → sine      : bright octave 3rd
-             *   3 → triangle  : colour — 7th/9th flavour
-             *   4 → sine      : top melody voice
-             *
-             * Each voice fades in staggered (0, 0.4, 0.8, 1.2, 1.6s delay)
-             * for a building, cinematic entrance rather than a wall of sound.
-             */
             const voiceTypes = ['sine', 'triangle', 'sine', 'triangle', 'sine'];
             const voiceBaseGains = [0.14, 0.10, 0.09, 0.08, 0.07];
             const chord = BASE_CHORDS[chordIdx];
@@ -498,7 +585,6 @@
 
                 const gainNode = audioCtx.createGain();
                 gainNode.gain.setValueAtTime(0.0001, now);
-                // Staggered fade-in: each voice enters 0.4s after the previous
                 gainNode.gain.exponentialRampToValueAtTime(voiceBaseGains[i], now + 2.0 + i * 0.4);
 
                 osc.connect(gainNode);
@@ -508,13 +594,6 @@
                 padOscillators.push({ osc, gain: gainNode });
             }
 
-            // ── Sequencer: rhythm engine ───────────────────────────────
-            /*
-             * Runs on a precise Web Audio clock offset from currentTime
-             * to avoid setTimeout drift corrupting rhythm feel.
-             * Steps fire sub/pluck/pad accents per pattern.
-             * Every 16 steps (1 bar) advances the chord progression.
-             */
             let nextStepTime = audioCtx.currentTime + 0.05;
             let step = 0;
 
@@ -527,7 +606,6 @@
                 if (pluckPattern[step]) triggerPluck(t);
                 if (padPattern[step])   triggerPadAccent(t);
 
-                // Every full bar (16 steps) — advance chord, unless user is tuning via scroll
                 if (step === 0 && padOscillators.length > 0 && !userScrolling) {
                     setTimeout(() => advanceChord(), Math.max(0, (t - audioCtx.currentTime) * 1000));
                 }
@@ -537,8 +615,6 @@
 
                 nextStepTime += STEP_MS / 1000;
 
-                // Schedule next step ahead of time using setTimeout
-                // Look-ahead: 25ms — tight enough for groove, safe for jitter
                 const lookahead = (nextStepTime - audioCtx.currentTime) * 1000 - 25;
                 sequencerInterval = setTimeout(scheduleStep, Math.max(0, lookahead));
             }
@@ -547,7 +623,17 @@
         }
 
         // ─── AUDIO BUTTON ──────────────────────────────────────────────
-        document.getElementById('audioBtn').addEventListener('click', () => {
+        // Dedicated touchend on the button bypasses the canvas touch listeners
+        // and fires the audio action with zero delay on iOS/Android.
+        const audioBtn = document.getElementById('audioBtn');
+
+        audioBtn.addEventListener('touchend', (e) => {
+            e.preventDefault(); // kills the synthetic 300ms-delayed click
+            e.stopPropagation();
+            audioBtn.click();   // fire the real handler immediately
+        }, { passive: false });
+
+        audioBtn.addEventListener('click', () => {
             if (!audioCtx) {
                 fireCinematicDrop();
                 isStreaming = true;
@@ -560,13 +646,12 @@
                     audioCtx.resume();
                     isStreaming = true;
                     shockwaveForce = 6.5;
-                    // Restart sequencer
                     fireCinematicDrop();
                 }
             }
         });
 
-        // ─── CANVAS / VISUAL ENGINE (UNTOUCHED) ───────────────────────
+        // ─── CANVAS / VISUAL ENGINE ────────────────────────────────────
         function adaptScreen() {
             width = window.innerWidth;
             height = window.innerHeight;
@@ -585,14 +670,7 @@
             pointer.y = e.clientY;
             pointer.active = true;
         });
-        
-        window.addEventListener('touchmove', e => {
-            pointer.x = e.touches[0].clientX;
-            pointer.y = e.touches[0].clientY;
-            pointer.active = true;
-        }, { passive: true });
-        
-        window.addEventListener('touchend', () => pointer.active = false);
+
         window.addEventListener('mouseleave', () => pointer.active = false);
 
         function boot() {
@@ -637,6 +715,9 @@
             
             textLayer.style.transform = `scale(${1 + (shockwaveForce * 0.08)})`;
 
+            // ── Frequency-to-buoyancy scalar ─────────────────────────
+            const freqBuoy = Math.max(0, scrollSemitonesTarget / 12);
+
             let depthRef = Math.max(width, 800) / 2;
 
             for (let i = 0; i < elements.length; i++) {
@@ -644,9 +725,9 @@
                 
                 p.a -= 0.005 + (0.004 * (p.baseR / 200));
                 
-                let wave1 = Math.sin(p.a * 15 - tick * 12) * (50 * shockwaveForce);
-                let wave2 = Math.cos(p.a * 7 + tick * 8) * (25 * shockwaveForce);
-                let wave3 = Math.sin(p.r * 0.08 - tick * 15) * (15 * shockwaveForce);
+                let wave1 = Math.sin(p.a * 15 - tick * 12) * (50 * shockwaveForce + 50 * freqBuoy);
+                let wave2 = Math.cos(p.a * 7 + tick * 8) * (25 * shockwaveForce + 25 * freqBuoy);
+                let wave3 = Math.sin(p.r * 0.08 - tick * 15) * (15 * shockwaveForce + 15 * freqBuoy);
                 
                 p.r = p.baseR + wave1 + wave2 + wave3 + (shockwaveForce * 40); 
                 
@@ -697,3 +778,5 @@
     </script>
 </body>
 </html>
+
+
