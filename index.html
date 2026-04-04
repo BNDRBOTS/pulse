@@ -181,16 +181,16 @@
         </div>
         
         <div class="center-stage" id="stage">
-            <div class="headline-top">YOU BELONG</div>
+            <div class="headline-top">LOVE BELONGS</div>
             <div class="headline-bottom">HERE.</div>
             <div class="subtitle">
-               See yourself in every color and rhythm - we all deserve to just 'be', without explaining ourselves. Click the "play" button to toggle the sound on/off. ↗
+                See yourself in every color and rhythm - we all deserve to just 'be', without explaining ourselves. Click the "play" button in the top right corner to toggle the sound on/off. ↗
             </div>
         </div>
 
         <div class="bottom-bar">
             <div class="hud-text hud-left">01 &mdash; Zen</div>
-            <div class="hud-text hud-right">VISUALS | ON</div>
+            <div class="hud-text hud-right">Moving Forward</div>
         </div>
     </div>
 
@@ -209,12 +209,364 @@
         let pointer = { x: -2000, y: -2000, active: false };
         let parallaxTarget = { x: 0, y: 0 };
         let parallaxCurrent = { x: 0, y: 0 };
-        let oscillators = [];
 
-        // Hyper-vibrant blended palette: Creame orange, violet glows, pale yellow, bright blues integrating into greens and beyond
+        // Scroll-controlled semitone transpose
+        let scrollSemitones = 0;          // current applied semitones (lerped)
+        let scrollSemitonesTarget = 0;    // target semitones from user scroll
+        let userScrolling = false;        // true while user is scrolling (suppresses auto-climb)
+        let scrollResumeTimer = null;     // debounce handle — releases user control after idle
+        const SCROLL_RESUME_DELAY = 2500; // ms of scroll silence before auto-climb resumes
+
+        // Hyper-vibrant blended palette
         const palette = ['#ff9955', '#bb44ff', '#ffffaa', '#00ffaa', '#00aaff', '#00dd66', '#00eeff'];
         const PI2 = Math.PI * 2;
 
+        // ─── AUDIO STATE ───────────────────────────────────────────────
+        let masterGain, reverbNode, filterNode, delayNode, feedbackGain, delayWet;
+        let padOscillators = [];   // sustained pad voices (always on, gain-enveloped)
+        let subOsc = null;         // sub-bass pulse oscillator (always on)
+        let subGain = null;
+        let chordIdx = 0;
+        let sequencerStep = 0;
+        let sequencerInterval = null;
+        let rhythmInterval = null;
+
+        /*
+         * BASE CHORD POOL — voiced in root position, bottom-up
+         * All values are base frequencies at scrollSemitones = 0.
+         * Scroll transpose is applied multiplicatively: freq * 2^(semitones/12)
+         *
+         * Progression: Am7 → Fmaj7 → Cmaj9 → G7sus4
+         * — Minor-rooted for darkness and affect (not major-bright drone)
+         * — Extended voicings: 7ths and 9ths for cinematic depth
+         * — Bass note separated to sub oscillator for punch
+         */
+        const BASE_CHORDS = [
+            // Am7:   A2  E3  A3  C4  G4
+            [110.00, 164.81, 220.00, 261.63, 392.00],
+            // Fmaj7: F2  C3  F3  A3  E4
+            [87.31,  130.81, 174.61, 220.00, 329.63],
+            // Cmaj9: C3  G3  C4  E4  D4
+            [130.81, 196.00, 261.63, 329.63, 293.66],
+            // G7sus4:G2  D3  G3  C4  F4
+            [98.00,  146.83, 196.00, 261.63, 349.23]
+        ];
+
+        // Sub-bass root per chord (one octave below chord root)
+        const BASE_SUB = [55.00, 43.65, 65.41, 49.00];
+
+        /*
+         * RHYTHM SEQUENCER — 16 steps at 120 BPM (500ms per beat, 125ms per 16th)
+         * Each row = one voice layer
+         *   subPattern:  kick-like sub pulse
+         *   padPattern:  pad stab accent (gain envelope triggered)
+         *   pluckPattern: bright attack pluck hits
+         *
+         * Patterns use syncopation for groove — not straight 4-on-the-floor
+         */
+        const BPM = 118;
+        const STEP_MS = (60 / BPM / 4) * 1000; // 16th note in ms
+
+        const subPattern   = [1,0,0,0, 0,0,1,0, 1,0,0,1, 0,1,0,0];
+        const padPattern   = [1,0,0,1, 0,1,0,0, 1,0,0,0, 0,0,1,0];
+        const pluckPattern = [0,0,1,0, 1,0,0,1, 0,1,0,0, 1,0,0,1];
+
+        // ─── HELPER: semitone transpose multiplier ─────────────────────
+        function semRatio(semitones) {
+            return Math.pow(2, semitones / 12);
+        }
+
+        // ─── SYNTHETIC IMPULSE REVERB ──────────────────────────────────
+        function buildReverb(ctx, duration, decay) {
+            const rate = ctx.sampleRate;
+            const len = rate * duration;
+            const buf = ctx.createBuffer(2, len, rate);
+            for (let ch = 0; ch < 2; ch++) {
+                const d = buf.getChannelData(ch);
+                for (let i = 0; i < len; i++) {
+                    d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+                }
+            }
+            const conv = ctx.createConvolver();
+            conv.buffer = buf;
+            return conv;
+        }
+
+        // ─── FIRE A SUB PULSE (envelope on subGain) ────────────────────
+        function triggerSub(time) {
+            if (!subGain) return;
+            const g = subGain.gain;
+            g.cancelScheduledValues(time);
+            g.setValueAtTime(0.0001, time);
+            g.exponentialRampToValueAtTime(0.55, time + 0.015); // sharp attack
+            g.exponentialRampToValueAtTime(0.001, time + 0.28); // decay to silence
+        }
+
+        // ─── FIRE A PLUCK (short sine burst via new oscillator) ────────
+        function triggerPluck(time) {
+            if (!audioCtx || !filterNode) return;
+            const ratio = semRatio(scrollSemitones);
+            const chord = BASE_CHORDS[chordIdx];
+            // Pick a colour tone from the chord (index 2 or 4 — mid-high voice)
+            const rootFreq = chord[2] * ratio * 2; // two octaves up for brightness
+
+            const osc = audioCtx.createOscillator();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(rootFreq, time);
+            osc.frequency.exponentialRampToValueAtTime(rootFreq * 0.5, time + 0.18); // pitch drop = pluck feel
+
+            const g = audioCtx.createGain();
+            g.gain.setValueAtTime(0.0001, time);
+            g.gain.exponentialRampToValueAtTime(0.22, time + 0.008);
+            g.gain.exponentialRampToValueAtTime(0.0001, time + 0.18);
+
+            osc.connect(g);
+            g.connect(filterNode);
+            osc.start(time);
+            osc.stop(time + 0.2);
+        }
+
+        // ─── TRIGGER PAD ACCENT (swell on existing pads) ───────────────
+        function triggerPadAccent(time) {
+            if (!padOscillators.length) return;
+            padOscillators.forEach((v, i) => {
+                const g = v.gain.gain;
+                g.cancelScheduledValues(time);
+                const base = 0.08 + i * 0.01;
+                g.setValueAtTime(base, time);
+                g.linearRampToValueAtTime(base * 2.8, time + 0.06);  // attack swell
+                g.exponentialRampToValueAtTime(base, time + 0.55);    // fall back
+            });
+        }
+
+        // ─── ADVANCE CHORD ─────────────────────────────────────────────
+        function advanceChord() {
+            if (!audioCtx || !isStreaming) return;
+            chordIdx = (chordIdx + 1) % BASE_CHORDS.length;
+            applyChord(audioCtx.currentTime, 1.8); // smooth glide over 1.8s
+            shockwaveForce = 4 + Math.random() * 2.5;
+        }
+
+        function applyChord(time, glide) {
+            if (!padOscillators.length) return;
+            const ratio = semRatio(scrollSemitones);
+            const chord = BASE_CHORDS[chordIdx];
+            const sub   = BASE_SUB[chordIdx];
+
+            padOscillators.forEach((v, i) => {
+                const target = chord[i % chord.length] * ratio;
+                v.osc.frequency.cancelScheduledValues(time);
+                v.osc.frequency.exponentialRampToValueAtTime(target, time + glide);
+            });
+
+            if (subOsc) {
+                subOsc.frequency.cancelScheduledValues(time);
+                subOsc.frequency.exponentialRampToValueAtTime(sub * ratio, time + glide);
+            }
+        }
+
+        // ─── APPLY SCROLL TRANSPOSE LIVE ──────────────────────────────
+        function applyScrollTranspose() {
+            if (!audioCtx || !isStreaming) return;
+            const now = audioCtx.currentTime;
+            applyChord(now, 0.35); // snappy but smooth 350ms re-tune
+        }
+
+
+
+        // ─── SCROLL HANDLER ────────────────────────────────────────────
+        // Each wheel notch = 1 semitone. User takes control immediately.
+        // Auto-climb pauses. After SCROLL_RESUME_DELAY ms of silence,
+        // auto-climb resumes from current position — no reset.
+        window.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            if (!isStreaming) return;
+
+            // Hand control to user — sequencer sees userScrolling=true and skips chord advance
+            userScrolling = true;
+
+            // Reset any pending resume debounce
+            if (scrollResumeTimer !== null) {
+                clearTimeout(scrollResumeTimer);
+                scrollResumeTimer = null;
+            }
+
+            // Accumulate semitones — ±12 for expressive range
+            const delta = e.deltaY > 0 ? 1 : -1;
+            scrollSemitonesTarget = Math.max(-12, Math.min(12, scrollSemitonesTarget + delta));
+            scrollSemitones = scrollSemitonesTarget;
+            applyScrollTranspose();
+
+            // After SCROLL_RESUME_DELAY ms of no scrolling, release control back to sequencer.
+            // The sequencer's bar-clock picks up naturally at the next bar boundary —
+            // the inner 1200ms pause gives exactly one musical beat of silence before resuming.
+            scrollResumeTimer = setTimeout(() => {
+                scrollResumeTimer = null;
+                setTimeout(() => {
+                    userScrolling = false; // sequencer resumes at next bar naturally
+                }, 1200);
+            }, SCROLL_RESUME_DELAY);
+        }, { passive: false });
+
+        // ─── BOOT AUDIO ENGINE ─────────────────────────────────────────
+        function fireCinematicDrop() {
+            if (!audioCtx) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioCtx = new AudioContext();
+            }
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            shockwaveForce = 6.5;
+
+            if (padOscillators.length > 0) return; // already running
+
+            const now = audioCtx.currentTime;
+
+            // ── Master chain ──────────────────────────────────────────
+            masterGain = audioCtx.createGain();
+            masterGain.gain.setValueAtTime(0.38, now);
+            masterGain.connect(audioCtx.destination);
+
+            // Reverb — 2.8s, decay=3 — generous spatial wash
+            reverbNode = buildReverb(audioCtx, 2.8, 3);
+            const reverbWet = audioCtx.createGain();
+            reverbWet.gain.setValueAtTime(0.28, now);
+            reverbNode.connect(reverbWet);
+            reverbWet.connect(masterGain);
+
+            // Filter — lowpass 3400 Hz, subtle Q for warmth without mud
+            filterNode = audioCtx.createBiquadFilter();
+            filterNode.type = 'lowpass';
+            filterNode.frequency.setValueAtTime(3400, now);
+            filterNode.Q.setValueAtTime(1.2, now);
+            filterNode.connect(masterGain);
+            filterNode.connect(reverbNode);
+
+            // Delay — 3/8 note at 118 BPM = ~305ms for rhythmic echo
+            delayNode = audioCtx.createDelay(2.0);
+            delayNode.delayTime.setValueAtTime(0.305, now);
+            feedbackGain = audioCtx.createGain();
+            feedbackGain.gain.setValueAtTime(0.32, now);
+            delayNode.connect(feedbackGain);
+            feedbackGain.connect(delayNode);
+            delayWet = audioCtx.createGain();
+            delayWet.gain.setValueAtTime(0.18, now);
+            filterNode.connect(delayWet);
+            delayWet.connect(delayNode);
+            delayNode.connect(masterGain);
+
+            // ── Sub-bass oscillator (always on, gain-triggered) ───────
+            subOsc = audioCtx.createOscillator();
+            subOsc.type = 'sine';
+            subOsc.frequency.setValueAtTime(BASE_SUB[chordIdx], now);
+
+            // Low-shelf to cut sub below 40Hz, keep punch around 55-80Hz
+            const subFilter = audioCtx.createBiquadFilter();
+            subFilter.type = 'lowshelf';
+            subFilter.frequency.setValueAtTime(80, now);
+            subFilter.gain.setValueAtTime(6, now);
+
+            subGain = audioCtx.createGain();
+            subGain.gain.setValueAtTime(0.0001, now);
+
+            subOsc.connect(subFilter);
+            subFilter.connect(subGain);
+            subGain.connect(masterGain); // sub bypasses reverb/delay — stays tight
+            subOsc.start(now);
+
+            // ── Pad voices (sustained, always on) ────────────────────
+            /*
+             * 5 voice pad architecture:
+             *   0 → sine      : warm bass octave root
+             *   1 → triangle  : mid-harmonic 5th (odd harmonics only at 1/n²)
+             *   2 → sine      : bright octave 3rd
+             *   3 → triangle  : colour — 7th/9th flavour
+             *   4 → sine      : top melody voice
+             *
+             * Each voice fades in staggered (0, 0.4, 0.8, 1.2, 1.6s delay)
+             * for a building, cinematic entrance rather than a wall of sound.
+             */
+            const voiceTypes = ['sine', 'triangle', 'sine', 'triangle', 'sine'];
+            const voiceBaseGains = [0.14, 0.10, 0.09, 0.08, 0.07];
+            const chord = BASE_CHORDS[chordIdx];
+            const ratio = semRatio(scrollSemitones);
+
+            for (let i = 0; i < 5; i++) {
+                const osc = audioCtx.createOscillator();
+                osc.type = voiceTypes[i];
+                osc.frequency.setValueAtTime(chord[i] * ratio, now);
+
+                const gainNode = audioCtx.createGain();
+                gainNode.gain.setValueAtTime(0.0001, now);
+                // Staggered fade-in: each voice enters 0.4s after the previous
+                gainNode.gain.exponentialRampToValueAtTime(voiceBaseGains[i], now + 2.0 + i * 0.4);
+
+                osc.connect(gainNode);
+                gainNode.connect(filterNode);
+                osc.start(now);
+
+                padOscillators.push({ osc, gain: gainNode });
+            }
+
+            // ── Sequencer: rhythm engine ───────────────────────────────
+            /*
+             * Runs on a precise Web Audio clock offset from currentTime
+             * to avoid setTimeout drift corrupting rhythm feel.
+             * Steps fire sub/pluck/pad accents per pattern.
+             * Every 16 steps (1 bar) advances the chord progression.
+             */
+            let nextStepTime = audioCtx.currentTime + 0.05;
+            let step = 0;
+
+            function scheduleStep() {
+                if (!isStreaming || !audioCtx) return;
+
+                const t = nextStepTime;
+
+                if (subPattern[step])   triggerSub(t);
+                if (pluckPattern[step]) triggerPluck(t);
+                if (padPattern[step])   triggerPadAccent(t);
+
+                // Every full bar (16 steps) — advance chord, unless user is tuning via scroll
+                if (step === 0 && padOscillators.length > 0 && !userScrolling) {
+                    setTimeout(() => advanceChord(), Math.max(0, (t - audioCtx.currentTime) * 1000));
+                }
+
+                step = (step + 1) % 16;
+                sequencerStep = step;
+
+                nextStepTime += STEP_MS / 1000;
+
+                // Schedule next step ahead of time using setTimeout
+                // Look-ahead: 25ms — tight enough for groove, safe for jitter
+                const lookahead = (nextStepTime - audioCtx.currentTime) * 1000 - 25;
+                sequencerInterval = setTimeout(scheduleStep, Math.max(0, lookahead));
+            }
+
+            scheduleStep();
+        }
+
+        // ─── AUDIO BUTTON ──────────────────────────────────────────────
+        document.getElementById('audioBtn').addEventListener('click', () => {
+            if (!audioCtx) {
+                fireCinematicDrop();
+                isStreaming = true;
+            } else {
+                if (isStreaming) {
+                    audioCtx.suspend();
+                    isStreaming = false;
+                    clearTimeout(sequencerInterval);
+                } else {
+                    audioCtx.resume();
+                    isStreaming = true;
+                    shockwaveForce = 6.5;
+                    // Restart sequencer
+                    fireCinematicDrop();
+                }
+            }
+        });
+
+        // ─── CANVAS / VISUAL ENGINE (UNTOUCHED) ───────────────────────
         function adaptScreen() {
             width = window.innerWidth;
             height = window.innerHeight;
@@ -244,7 +596,6 @@
         window.addEventListener('mouseleave', () => pointer.active = false);
 
         function boot() {
-            // Increased density and finer base scale for an intricate, "elite" level of detail
             const density = window.innerWidth < 768 ? 4500 : 12000;
             const goldenAngle = 137.508 * (Math.PI / 180);
             
@@ -259,114 +610,10 @@
                     r: r,
                     a: a,
                     color: colorHex,
-                    // Smaller initial particle size allows for elegant structural webbing
                     size: (Math.random() * 1.5) + 0.5 
                 });
             }
         }
-
-        function fireCinematicDrop() {
-            if (!audioCtx) {
-                const AudioContext = window.AudioContext || window.webkitAudioContext;
-                audioCtx = new AudioContext();
-            }
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-
-            // Retain visual impact
-            shockwaveForce = 6.5; 
-
-            if (oscillators.length === 0) {
-                const masterGain = audioCtx.createGain();
-                masterGain.gain.value = 0.4;
-                
-                const filter = audioCtx.createBiquadFilter();
-                filter.type = 'lowpass';
-                filter.frequency.value = 1000;
-                
-                const delay = audioCtx.createDelay(2.0);
-                delay.delayTime.value = 0.75;
-                const feedback = audioCtx.createGain();
-                feedback.gain.value = 0.6;
-                delay.connect(feedback);
-                feedback.connect(delay);
-                
-                filter.connect(masterGain);
-                filter.connect(delay);
-                delay.connect(masterGain);
-                masterGain.connect(audioCtx.destination);
-                
-                const lfo = audioCtx.createOscillator();
-                lfo.type = 'sine';
-                lfo.frequency.value = 0.02; 
-                const lfoGain = audioCtx.createGain();
-                lfoGain.gain.value = 400;
-                lfo.connect(lfoGain);
-                lfoGain.connect(filter.frequency);
-                lfo.start();
-
-                const baseScale = [128.00, 160.00, 192.00, 256.00, 320.00, 384.00];
-                
-                for (let i = 0; i < 5; i++) {
-                    let osc = audioCtx.createOscillator();
-                    osc.type = i % 2 === 0 ? 'sine' : 'triangle';
-                    
-                    let oscGain = audioCtx.createGain();
-                    oscGain.gain.value = 0; 
-                    oscGain.gain.linearRampToValueAtTime(0.2, audioCtx.currentTime + 4);
-                    
-                    osc.connect(oscGain);
-                    oscGain.connect(filter);
-                    
-                    let freq = baseScale[i % baseScale.length];
-                    osc.frequency.value = freq;
-                    osc.start();
-                    
-                    oscillators.push({osc: osc, gain: oscGain, targetFreq: freq});
-                }
-            }
-        }
-
-        document.getElementById('audioBtn').addEventListener('click', () => {
-            if (!audioCtx) {
-                fireCinematicDrop();
-                isStreaming = true;
-                setInterval(() => {
-                    if (audioCtx && isStreaming) {
-                        const now = audioCtx.currentTime;
-                        // Elite harmonic progressions: Strict beautiful chords guarantee it stays perfectly in tune
-                        const chords = [
-                            [128.00, 160.00, 192.00, 256.00, 320.00], // C Maj 9
-                            [170.66, 213.33, 256.00, 320.00, 384.00], // F Maj 9
-                            [144.00, 172.80, 216.00, 259.20, 345.60], // D Min 11
-                            [160.00, 192.00, 240.00, 288.00, 384.00]  // E Min 7
-                        ];
-                        
-                        window.chordIdx = (window.chordIdx !== undefined ? window.chordIdx + 1 : 1) % chords.length;
-                        let nextChord = chords[window.chordIdx];
-                        
-                        oscillators.forEach((o, i) => {
-                            let nextFreq = nextChord[i % nextChord.length];
-                            o.targetFreq = nextFreq;
-                            
-                            // Exponential ramp ensures perfect pitch perception, and strict uniform timing 
-                            // prevents out-of-tune microtones during the transition.
-                            o.osc.frequency.exponentialRampToValueAtTime(nextFreq, now + 3.0);
-                        });
-                        
-                        shockwaveForce = 3 + Math.random() * 2;
-                    }
-                }, 4000); 
-            } else {
-                if (isStreaming) {
-                    audioCtx.suspend();
-                    isStreaming = false;
-                } else {
-                    audioCtx.resume();
-                    isStreaming = true;
-                    shockwaveForce = 6.5;
-                }
-            }
-        });
 
         function run() {
             if (pointer.active) {
@@ -379,13 +626,11 @@
             parallaxCurrent.x += (parallaxTarget.x - parallaxCurrent.x) * 0.1;
             parallaxCurrent.y += (parallaxTarget.y - parallaxCurrent.y) * 0.1;
 
-            // Clear frame with gentle trail mapping
             ctx.globalCompositeOperation = 'source-over';
             ctx.globalAlpha = 1.0;
             ctx.fillStyle = 'rgba(0, 0, 0, 0.15)'; 
             ctx.fillRect(0, 0, width, height);
             
-            // Screen blending maximizes vibrant color overlap without blowing out to pure white as fast as lighter
             ctx.globalCompositeOperation = 'screen';
             tick += 0.025; 
             shockwaveForce *= 0.90; 
@@ -399,7 +644,6 @@
                 
                 p.a -= 0.005 + (0.004 * (p.baseR / 200));
                 
-                // Elite artifact detailing: Complex multi-harmonic orbital interference
                 let wave1 = Math.sin(p.a * 15 - tick * 12) * (50 * shockwaveForce);
                 let wave2 = Math.cos(p.a * 7 + tick * 8) * (25 * shockwaveForce);
                 let wave3 = Math.sin(p.r * 0.08 - tick * 15) * (15 * shockwaveForce);
@@ -411,7 +655,6 @@
                 
                 let distToCenter = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
                 
-                // Keep the smooth, deep 3D curve
                 let zScale = 0.05 + Math.pow(distToCenter / depthRef, 2.2) * 5.5;
                 
                 x -= parallaxCurrent.x * zScale * 2.5; 
@@ -419,13 +662,9 @@
 
                 let renderColor = p.color;
                 
-                // Hard cap size & alpha so edges blend gracefully.
-                // INCREASED minimum size and alpha to eliminate the dark center shadow,
-                // revealing the colorful twirling depth at the absolute core.
                 let maxParticleSize = window.innerWidth < 768 ? 8 : 14;
                 let renderSize = Math.max(1.5, Math.min(p.size * (zScale + 1.2), maxParticleSize));
                 
-                // Solid minimum alpha guarantees the center is vivid and present
                 let alpha = Math.min(0.9, Math.max(0.25, zScale * 0.25)); 
                 
                 if (pointer.active) {
@@ -438,7 +677,6 @@
                         let push = (250 - dist) / 250;
                         x += (dx / dist) * push * 180;
                         y += (dy / dist) * push * 180;
-                        // Instead of turning white, amplify the particle's natural brilliant color
                         renderSize = Math.min(renderSize * 2.5, 20); 
                         alpha = Math.min(1.0, alpha * 2.5);
                     }
